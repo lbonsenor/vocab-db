@@ -42,13 +42,25 @@
 > python -m venv .venv
 > ```
 >
-> **Jupyter**, **Stanza**, and **Supabase\*** packages
+> **Jupyter**, **Stanza**, and **PostgreSQL** packages
 >
 > ```sh
-> pip install jupyter stanza supabase dotenv
+> pip install jupyter stanza dotenv psycopg2
 > ```
+
+> [!important]
 >
-> **Note**: Supabase was the database platform I chose for my vocab allocation, you can use whatever form of persistent data allocation you'd like, although `db.py` does use supabase commands
+> ## Environment Variables
+>
+> Add the following variables to your `.env` file
+>
+> ```py
+> user = [YOUR_POSTGRESQL_USR]
+> password = [YOUR_POSTGREQSL_PASSWD]
+> host = [YOUR_POSTGREQSL_HOST]
+> port = [YOUR_POSTGREQSL_PORT]
+> dbname = [YOUR_POSTGREQSL_DBNAME]
+> ```
 
 ## Tables
 
