@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Virtual environment
+venv/
+.venv/
+ENV/
+env/
+
+# VS Code settings
+.vscode/
+
+# Environment variables
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Stanza models (if downloaded locally)
+stanza_resources/
+
+# Supabase config (if any secrets)
+supabase/.env
