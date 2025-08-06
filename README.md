@@ -56,10 +56,10 @@
 >
 > ```py
 > user = [YOUR_POSTGRESQL_USR]
-> password = [YOUR_POSTGREQSL_PASSWD]
-> host = [YOUR_POSTGREQSL_HOST]
-> port = [YOUR_POSTGREQSL_PORT]
-> dbname = [YOUR_POSTGREQSL_DBNAME]
+> password = [YOUR_POSTGRESQL_PASSWD]
+> host = [YOUR_POSTGRESQL_HOST]
+> port = [YOUR_POSTGRESQL_PORT]
+> dbname = [YOUR_POSTGRESQL_DBNAME]
 > ```
 
 ## Tables
