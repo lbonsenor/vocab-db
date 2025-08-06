@@ -45,7 +45,7 @@
 > **Jupyter**, **Stanza**, and **PostgreSQL** packages
 >
 > ```sh
-> pip install jupyter stanza dotenv psycopg2
+> pip install jupyter stanza python-dotenv psycopg2
 > ```
 
 > [!important]
