@@ -1,3 +1,6 @@
+import re
+import pykakasi
+
 def decompose_syllable(input):
     BASE = 0xAC00
     LAST = 0XD7A3
@@ -39,3 +42,13 @@ def hangul(input):
             output.append(romanized)
     
     return ''.join(output)
+
+def romanize(text):
+    if re.search(r'[\u3040-\u30ff\u4e00-\u9fff]', text):  # Japanese
+        kks = pykakasi.kakasi()
+        result = kks.convert(text)
+        return " ".join([item['hepburn'] for item in result])
+    elif re.search(r'[\uac00-\ud7a3]', text):  # Korean
+        return hangul(text)
+    else:
+        return text

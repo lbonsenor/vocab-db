@@ -2,14 +2,15 @@ from typing import Dict, List
 import psycopg2
 import psycopg2.extras
 from psycopg2.extensions import connection
+from psycopg2 import sql
 
 import os
 import dotenv
 
+lang = ""
 
 # --- Database Connection ---
-def connect():
-    # Fetch variables
+def connect(language: str):
     USER = os.environ.get("user")
     PASSWORD = os.environ.get("password")
     HOST = os.environ.get("host")
@@ -25,81 +26,87 @@ def connect():
     )
     print("Connection successful!")
 
+    global lang
+    lang = language
     return connection
 
 
 # --- Table Creation ---
 def create_tables(conn: connection):
     queries = [
-        # POS tag tables
-        """
-        CREATE TABLE IF NOT EXISTS public.upos_tags (
-            id TEXT PRIMARY KEY,
-            label TEXT NOT NULL
-        );
-        """,
+        sql.SQL("""
+            CREATE SCHEMA IF NOT EXISTS {};
+        """).format(sql.Identifier(lang)),
 
-        """
-        CREATE TABLE IF NOT EXISTS public.xpos_tags (
-            id TEXT PRIMARY KEY,
-            label TEXT NOT NULL
-        );
-        """,
+        sql.SQL("""
+            CREATE TABLE IF NOT EXISTS public.upos_tags (
+                id TEXT PRIMARY KEY,
+                label TEXT NOT NULL
+            );
+        """),
 
-        # morphemes
-        """
-        CREATE TABLE IF NOT EXISTS public.morphemes (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            text TEXT NOT NULL,
-            xpos_id TEXT REFERENCES public.xpos_tags(id),
-            translation TEXT
-        );
-        """,
+        sql.SQL("""
+            CREATE TABLE IF NOT EXISTS {}.xpos_tags (
+                id TEXT PRIMARY KEY,
+                label TEXT NOT NULL
+            );
+        """).format(sql.Identifier(lang)),
 
-        # words
-        """
-        CREATE TABLE IF NOT EXISTS public.words (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            text TEXT NOT NULL,
-            upos_id TEXT REFERENCES public.upos_tags(id),
-            translation TEXT
-        );
-        """,
+        sql.SQL("""
+            CREATE TABLE IF NOT EXISTS {}.morphemes (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                text TEXT NOT NULL,
+                xpos_id TEXT REFERENCES {}.xpos_tags(id),
+                translation TEXT
+            );
+        """).format(sql.Identifier(lang), sql.Identifier(lang)),
 
-        # lemmas (junction table)
-        """
-        CREATE TABLE IF NOT EXISTS public.lemmas (
-            word_id UUID REFERENCES public.words(id),
-            index BIGINT NOT NULL,
-            morpheme_id UUID REFERENCES public.morphemes(id),
-            PRIMARY KEY (word_id, index)
-        );
-        """
+        sql.SQL("""
+            CREATE TABLE IF NOT EXISTS {}.words (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                text TEXT NOT NULL,
+                upos_id TEXT REFERENCES public.upos_tags(id),
+                translation TEXT
+            );
+        """).format(sql.Identifier(lang)),
+
+        sql.SQL("""
+            CREATE TABLE IF NOT EXISTS {}.lemmas (
+                word_id UUID REFERENCES {}.words(id),
+                index BIGINT NOT NULL,
+                morpheme_id UUID REFERENCES {}.morphemes(id),
+                PRIMARY KEY (word_id, index)
+            );
+        """).format(sql.Identifier(lang), sql.Identifier(lang), sql.Identifier(lang)),
     ]
 
+    cur = conn.cursor()
     for query in queries:
-        conn.cursor().execute(query)
-    
+        cur.execute(query)
     conn.commit()
-    print("All tables created succesfully in the 'public' schema.")
+    print(f"All tables created successfully in the '{lang}' schema.")
+
 
 # --- Get UPOS label ---
 def get_upos(conn, tag: str) -> str:
+    query = sql.SQL("SELECT label FROM public.upos_tags WHERE id = %s")
+    
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("SELECT label FROM public.upos_tags WHERE id = %s", (tag,))
+        cur.execute(query, (tag,))
         result = cur.fetchone()
         return result["label"].capitalize() if result else None
+
 
 # --- Get or Prompt XPOS tags ---
 def get_xpos(conn, tags: List[str]) -> List[str]:
     unique_ids = list(set(tags))
     found: Dict[str, str] = {}
 
+    query = sql.SQL("SELECT id, label FROM {}.xpos_tags WHERE id = ANY(%s)").format(
+        sql.Identifier(lang)
+    )
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute(
-            "SELECT id, label FROM public.xpos_tags WHERE id = ANY(%s)",
-            (unique_ids,)
-        )
+        cur.execute(query, (unique_ids,))
         for row in cur.fetchall():
             found[row["id"]] = row["label"]
 
@@ -121,28 +128,29 @@ def get_xpos(conn, tags: List[str]) -> List[str]:
             new_entries.append((tag, label))
 
     if new_entries:
+        query = sql.SQL("INSERT INTO {}.xpos_tags (id, label) VALUES %s ON CONFLICT (id) DO NOTHING").format(
+            sql.Identifier(lang)
+        )
         with conn.cursor() as cur:
-            psycopg2.extras.execute_values(
-                cur,
-                "INSERT INTO public.xpos_tags (id, label) VALUES %s ON CONFLICT (id) DO NOTHING",
-                new_entries
-            )
+            psycopg2.extras.execute_values(cur, query.as_string(conn), new_entries)
         conn.commit()
 
     return result
 
+
 # --- Get or Insert Morphemes ---
 def get_morphemes(conn, morphemes: List[str], xpos_tags: List[str]):
     results = []
-
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         for text, xpos_id in zip(morphemes, xpos_tags):
-            cur.execute("""
+            query = sql.SQL("""
                 SELECT m.id, m.text, m.translation, x.label as xpos
-                FROM public.morphemes m
-                JOIN public.xpos_tags x ON m.xpos_id = x.id
+                FROM {}.morphemes m
+                JOIN {}.xpos_tags x ON m.xpos_id = x.id
                 WHERE m.text = %s AND m.xpos_id = %s
-            """, (text, xpos_id))
+            """).format(sql.Identifier(lang), sql.Identifier(lang))
+
+            cur.execute(query, (text, xpos_id))
             row = cur.fetchone()
 
             if row:
@@ -154,11 +162,13 @@ def get_morphemes(conn, morphemes: List[str], xpos_tags: List[str]):
                         break
                     print("Input cannot be empty. Try again.")
 
-                cur.execute("""
-                    INSERT INTO public.morphemes (text, xpos_id, translation)
+                query = sql.SQL("""
+                    INSERT INTO {}.morphemes (text, xpos_id, translation)
                     VALUES (%s, %s, %s)
                     RETURNING id
-                """, (text, xpos_id, translation))
+                """).format(sql.Identifier(lang))
+
+                cur.execute(query, (text, xpos_id, translation))
                 morpheme_id = cur.fetchone()["id"]
                 conn.commit()
 
@@ -168,16 +178,16 @@ def get_morphemes(conn, morphemes: List[str], xpos_tags: List[str]):
                     "xpos": xpos_id,
                     "translation": translation
                 })
-
     return results
+
 
 # --- Get or Insert Word and Lemmas ---
 def get_translation(conn, text: str, upos_tag: str, morphemes: List[Dict]):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("""
-            SELECT translation FROM public.words
-            WHERE text = %s AND upos_id = %s
-        """, (text, upos_tag))
+        query = sql.SQL("SELECT translation FROM {}.words WHERE text = %s AND upos_id = %s").format(
+            sql.Identifier(lang)
+        )
+        cur.execute(query, (text, upos_tag))
         row = cur.fetchone()
 
         if row:
@@ -189,23 +199,21 @@ def get_translation(conn, text: str, upos_tag: str, morphemes: List[Dict]):
                     break
                 print("Input cannot be empty. Try again.")
 
-            cur.execute("""
-                INSERT INTO public.words (text, upos_id, translation)
+            query = sql.SQL("""
+                INSERT INTO {}.words (text, upos_id, translation)
                 VALUES (%s, %s, %s)
                 RETURNING id
-            """, (text, upos_tag, translation))
+            """).format(sql.Identifier(lang))
+            cur.execute(query, (text, upos_tag, translation))
             word_id = cur.fetchone()["id"]
 
             lemmas = [(word_id, idx, m["id"]) for idx, m in enumerate(morphemes)]
 
-            psycopg2.extras.execute_values(
-                cur,
-                """
-                INSERT INTO public.lemmas (word_id, index, morpheme_id)
+            query = sql.SQL("""
+                INSERT INTO {}.lemmas (word_id, index, morpheme_id)
                 VALUES %s ON CONFLICT DO NOTHING
-                """,
-                lemmas
-            )
+            """).format(sql.Identifier(lang))
+            psycopg2.extras.execute_values(cur, query.as_string(conn), lemmas)
 
             conn.commit()
             return translation
