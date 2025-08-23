@@ -89,10 +89,8 @@ def create_tables(conn: connection):
 
 # --- Get UPOS label ---
 def get_upos(conn, tag: str) -> str:
-    query = sql.SQL("SELECT label FROM public.upos_tags WHERE id = %s")
-    
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute(query, (tag,))
+        cur.execute("SELECT label FROM public.upos_tags WHERE id = %s", (tag,))
         result = cur.fetchone()
         return result["label"].capitalize() if result else None
 
@@ -156,8 +154,9 @@ def get_morphemes(conn, morphemes: List[str], xpos_tags: List[str]):
             if row:
                 results.append(row)
             else:
+                xpos_label = get_xpos(conn, [xpos_id])[0]
                 while True:
-                    translation = input(f"Morpheme '{text}' with XPOS tag '{xpos_id}' not found. Enter translation: ").strip()
+                    translation = input(f"Morpheme '{text}' with XPOS tag '{xpos_label}' not found. Enter translation: ").strip()
                     if translation:
                         break
                     print("Input cannot be empty. Try again.")
