@@ -52,3 +52,11 @@ def romanize(text):
         return hangul(text)
     else:
         return text
+    
+def is_kanji(char):
+    code_point = ord(char)
+    return (
+        (0x4E00 <= code_point <= 0x9FFF) or  # CJK Unified Ideographs
+        (0x3400 <= code_point <= 0x4DBF) or  # CJK Unified Ideographs Extension A
+        (0x20000 <= code_point <= 0x2FA1F)   # CJK Unified Ideographs Extensions B-F
+    )

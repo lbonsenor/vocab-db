@@ -216,3 +216,31 @@ def get_translation(conn, text: str, upos_tag: str, morphemes: List[Dict]):
 
             conn.commit()
             return translation
+
+# --- Get or Insert Etymology ---
+def get_etymology(conn, text:str):
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        query = sql.SQL("SELECT meaning FROM {}.etymologies WHERE id = %s").format(
+            sql.Identifier(lang)
+        )
+        cur.execute(query, (text))
+        row = cur.fetchone()
+
+        if row:
+            return row["meaning"]
+        else:
+            while True:
+                meaning = input(f"Etymology for word '{text}' not found. Enter etymology: ").strip()
+                if meaning:
+                    break
+                print("Input cannot be empty. Try again.")
+            
+            query = sql.SQL("""
+                INSERT INTO {}.etymologies (id, meaning)
+                VALUES (%s, %s)
+            """).format(sql.Identifier(lang))
+            cur.execute(query, (text, meaning))
+
+            conn.commit()
+            return meaning
+
