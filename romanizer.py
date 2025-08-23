@@ -52,7 +52,12 @@ def romanize(text):
         return hangul(text)
     else:
         return text
-    
+
+
+
+
+# HELPERS
+
 def is_kanji(char):
     code_point = ord(char)
     return (
