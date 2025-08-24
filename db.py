@@ -96,7 +96,7 @@ def get_upos(conn, tag: str) -> str:
 
 
 # --- Get or Prompt XPOS tags ---
-def get_xpos(conn, tags: List[str]) -> List[str]:
+def get_xpos_labels(conn, tags: List[str]) -> List[str]:
     unique_ids = list(set(tags))
     found: Dict[str, str] = {}
 
@@ -135,50 +135,45 @@ def get_xpos(conn, tags: List[str]) -> List[str]:
 
     return result
 
-
-# --- Get or Insert Morphemes ---
-def get_morphemes(conn, morphemes: List[str], xpos_tags: List[str]):
-    results = []
+# --- Get or Insert Morpheme ---
+def get_morpheme(conn, morpheme:str, xpos_tag: str):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        for text, xpos_id in zip(morphemes, xpos_tags):
+        query = sql.SQL("""
+            SELECT m.id, m.text, m.translation, x.label as xpos
+            FROM {}.morphemes m
+            JOIN {}.xpos_tags x ON m.xpos_id = x.id
+            WHERE m.text = %s AND m.xpos_id = %s
+        """).format(sql.Identifier(lang), sql.Identifier(lang))
+
+        cur.execute(query, (morpheme, xpos_tag))
+        row = cur.fetchone()
+
+        if row:
+            return row
+        else:
+            xpos_label = get_xpos_labels(conn, [xpos_tag])[0]
+            while True:
+                translation = input(f"Morpheme '{morpheme}' with XPOS tag '{xpos_label}' not found. Enter translation: ").strip()
+                if translation:
+                    break
+                print("Input cannot be empty. Try again.")
+            
             query = sql.SQL("""
-                SELECT m.id, m.text, m.translation, x.label as xpos
-                FROM {}.morphemes m
-                JOIN {}.xpos_tags x ON m.xpos_id = x.id
-                WHERE m.text = %s AND m.xpos_id = %s
-            """).format(sql.Identifier(lang), sql.Identifier(lang))
+                INSERT INTO {}.morphemes (text, xpos_id, translation)
+                VALUES (%s, %s, %s)
+                RETURNING id
+            """).format(sql.Identifier(lang))
 
-            cur.execute(query, (text, xpos_id))
-            row = cur.fetchone()
+            cur.execute(query, (morpheme, xpos_tag, translation))
+            morpheme_id = cur.fetchone()["id"]
+            conn.commit()
 
-            if row:
-                results.append(row)
-            else:
-                xpos_label = get_xpos(conn, [xpos_id])[0]
-                while True:
-                    translation = input(f"Morpheme '{text}' with XPOS tag '{xpos_label}' not found. Enter translation: ").strip()
-                    if translation:
-                        break
-                    print("Input cannot be empty. Try again.")
-
-                query = sql.SQL("""
-                    INSERT INTO {}.morphemes (text, xpos_id, translation)
-                    VALUES (%s, %s, %s)
-                    RETURNING id
-                """).format(sql.Identifier(lang))
-
-                cur.execute(query, (text, xpos_id, translation))
-                morpheme_id = cur.fetchone()["id"]
-                conn.commit()
-
-                results.append({
-                    "id": morpheme_id,
-                    "text": text,
-                    "xpos": xpos_id,
-                    "translation": translation
-                })
-    return results
-
+            return {
+                "id": morpheme_id,
+                "text": morpheme,
+                "xpos": xpos_tag,
+                "translation": translation
+            }
 
 # --- Get or Insert Word and Lemmas ---
 def get_translation(conn, text: str, upos_tag: str, morphemes: List[Dict]):
